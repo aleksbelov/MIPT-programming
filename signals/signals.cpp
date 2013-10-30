@@ -12,8 +12,10 @@
 #define SIGZERO SIGUSR2
 
 int isgetsig = 0, sig = 0, term = 0;
+int parentpid;
 
-const int BUFSIZE = 16;
+const int ALARMTIME = 1;
+const int BUFSIZE = 1;
 
 int choose_sig(int x){
 	if (x == 0) return SIGZERO;
@@ -32,12 +34,19 @@ void getzero(int x){
 	sig = 0;
 }
 
-void donone(int x){
-	printf("I am donone\n");
+void offalarm(int x){
+	alarm(ALARMTIME);
 }
 
 void setterm(int x){
 	term = 1;
+}
+
+void killbyalarm(int x){
+	if (!kill(parentpid, 0))
+		kill(parentpid, SIGKILL);
+	printf("\n\n***Process-writer (parent) is not responding and was killed. Operation failed!***\n");
+	exit(EXIT_FAILURE);
 }
 
 int main(int argc, char* argv[]){
@@ -46,7 +55,8 @@ int main(int argc, char* argv[]){
 		printf("Too many arguments");
 		exit(EXIT_FAILURE);
 	}
-
+	parentpid = getpid();
+	
 	sigset_t data;
 	sigemptyset(&data);
 	sigaddset(&data, SIGONE);
@@ -78,14 +88,18 @@ int main(int argc, char* argv[]){
 	
 	sigprocmask(SIG_BLOCK, &set, NULL);
 	
-	int parentpid = getpid();
 	int pid = fork();
 	if (pid == 0){//child-writer
 
 		struct sigaction getok;
 		memset(&getok, 0, sizeof(getok));
-		sigzero.sa_handler = donone;
+		getok.sa_handler = offalarm;
 		sigaction(SIGUSR1, &getok, NULL);
+		
+		struct sigaction alarmkill;
+		memset(&alarmkill, 0, sizeof(alarmkill));
+		alarmkill.sa_handler = killbyalarm;
+		sigaction(SIGALRM, &alarmkill, NULL);
 		
 		sigset_t sync;
 		sigemptyset(&sync);
@@ -94,22 +108,31 @@ int main(int argc, char* argv[]){
 		int status;
 		
 		int fd_source = open(argv[1], O_RDONLY);
-		int size = 1;
-		while (size = read(fd_source, &a, 1) > 0)
+		//int size = 1;
+		//char buf[BUFSIZE] = {};
+		//size = read(fd_source, &buf, BUFSIZE);
+		//while(size > 0)
+		while (read(fd_source, &a, 1) > 0)
 		{
-			for (int i = 0; i < 8; i++){
+			//for (int j = 0; j < size; j++){
+				//a = buf[j];
+				for (int i = 0; i < 8; i++){
 				
-				sigprocmask(SIG_BLOCK, &sync, NULL);
+					sigprocmask(SIG_BLOCK, &sync, NULL);
 				
-				if (!kill(parentpid, 0)) kill(parentpid, choose_sig(a & mask) );
-				else {
-					close(fd_source); 
-					exit(EXIT_FAILURE);
+					if (!kill(parentpid, choose_sig(a & mask))) {
+						alarm(ALARMTIME);
+					}
+					else {
+						close(fd_source); 
+						exit(EXIT_FAILURE);
+					}
+					a = a >> 1;
+				
+					sigwait(&sync, &status);
 				}
-				a = a >> 1;
-				
-				sigwait(&sync, &status);
-			}
+			//}
+			//size = read(fd_source, &buf, BUFSIZE);
 		}
 		close(fd_source);
 		exit(0);
@@ -123,7 +146,6 @@ int main(int argc, char* argv[]){
 	sigprocmask(SIG_UNBLOCK, &set, NULL);
 	
 	int bitcount = 0;
-	int bit = 0;
 	while (!(term)){
 		if (isgetsig){
 			sigprocmask(SIG_BLOCK, &data, NULL);
