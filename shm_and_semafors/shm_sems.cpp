@@ -129,7 +129,7 @@ int writer(key_t keyshm, key_t keysem, const char* inputfile){
 
 //======================================================================
 //	Detaching shared memory segment	
-	if (shmdt(shm) == -1){
+	/*if (shmdt(shm) == -1){
 		perror("#writer->shmdt");
 		exit(EXIT_FAILURE);
 	}
@@ -146,7 +146,7 @@ int writer(key_t keyshm, key_t keysem, const char* inputfile){
 		perror("#writer->semctl");
 		exit(EXIT_FAILURE);
 	}
-
+	*/
 	exit(0);
 }
 
