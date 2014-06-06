@@ -1,5 +1,5 @@
 
-FLAGS = -pthread -std=c99 -Wall -lm -lrt
+FLAGS = -pthread -std=c99 -Wall -lm
 
 a.out : mtrading.c
 	gcc mtrading.c $(FLAGS)

@@ -22,7 +22,7 @@ int A, B, Nthr, Nparts;
 double sums[100];
 
 double f(double x){
-	return sin(x)*cos(x);
+	return sin(x)*cos(x*x);
 }
 
 void* Simpson_integral(void* args){
