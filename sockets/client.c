@@ -1,19 +1,15 @@
-#include <sys/types.h>
+
 #include <sys/socket.h>
 #include <sys/select.h>
-#include <sys/un.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <arpa/inet.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
-#include <arpa/inet.h>
 #include <string.h>
-#include <strings.h>
-#include <math.h>
 #include <fcntl.h>
 #include <pthread.h>
-
 #include "sockets.h"
 
 int SERVER_CRASHED = -1;
@@ -21,6 +17,7 @@ int COUNT_OF_THREADS = 2;
 int COUNT_OF_SERVERS = 0;
 int COUNT_OF_PARTS = 100000000;
 int REAL_COUNT_OF_SERVERS = 0;
+double A = 0.0, B = 1.0;
 
 typedef struct {
 	int nthrs, *server_error;
@@ -32,7 +29,7 @@ void* connect_with_one_server(void* args){
 	thread_args_t my_args = *(thread_args_t*)args;
 
 	//Tcp connection
-	int tcpsock = socket(AF_INET , SOCK_STREAM , 0);
+	int tcpsock = socket(PF_INET , SOCK_STREAM , 0);
 	if (tcpsock == -1)
 	{
 		puts("Could not create tcp socket..");
@@ -40,27 +37,20 @@ void* connect_with_one_server(void* args){
 		return NULL;
 	}
 
-	struct timeval timeout;
-	timeout.tv_sec = 18;
-	timeout.tv_usec = 0;
-
-	//apply send timeout socket options
-	//setsockopt(tcpsock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(struct timeval));
 	int optval = 1;
-	int rez_setsock = setsockopt(tcpsock, SOL_SOCKET, SO_KEEPALIVE, &optval, sizeof(optval));
-	setsockopt(tcpsock, SOL_SOCKET, TCP_KEEPCNT, &optval, sizeof(optval));
-	setsockopt(tcpsock, SOL_SOCKET, TCP_KEEPIDLE, &optval, sizeof(optval));
-	setsockopt(tcpsock, SOL_SOCKET, TCP_KEEPINTVL, &optval, sizeof(optval));
-
-	//printf("setsockopt: %i", rez_setsock);
-
+	setsockopt(tcpsock, SOL_SOCKET, SO_KEEPALIVE, &optval, sizeof(optval));
+	optval = 1;
+	setsockopt(tcpsock, IPPROTO_TCP, TCP_KEEPCNT, &optval, sizeof(optval));
+	optval = 2;
+	setsockopt(tcpsock, IPPROTO_TCP, TCP_KEEPIDLE, &optval, sizeof(optval));
+	optval = 1;
+	setsockopt(tcpsock, IPPROTO_TCP, TCP_KEEPINTVL, &optval, sizeof(optval));
 
 	puts("Connecting with server..");
 	if (connect(tcpsock, (struct sockaddr *)my_args.server_addr, sizeof(*(my_args.server_addr))) < 0)
 		perror("Connection failed! Error");
 	else
 		puts("Connection was established");
-
 
 	//Sending task
 	data_for_server sendargs;
@@ -80,7 +70,6 @@ void* connect_with_one_server(void* args){
 	double result;
 	int recv_res = recv(tcpsock, &result, sizeof(result), 0);
 
-	//printf("recv: %i\n", recv_res);
 	if (recv_res <= 0){
 		*my_args.result = 0.0;
 		*my_args.server_error = 1;
@@ -98,7 +87,6 @@ int broadcast_search_for_servers(struct sockaddr_in *server_addr){
 	if (brcstsock == -1)
 	{
 		puts("Could not create broadcast socket..");
-		puts("Terminating..");
 		return 0;
 	}
 
@@ -136,7 +124,7 @@ int broadcast_search_for_servers(struct sockaddr_in *server_addr){
 
 	//Search for servers
 	while(servcount < COUNT_OF_SERVERS && select(brcstsock + 1, &readset, NULL, &readset, &timeout) > 0) {
-		int rdbyte = recvfrom(brcstsock, msgbr, sizeof(msgbr), 0,
+		recvfrom(brcstsock, msgbr, sizeof(msgbr), 0,
 		  (struct sockaddr*) &server_addr[servcount],
 		  &servaddrlen);
 
@@ -179,16 +167,14 @@ int main(int argc, char* argv[]){
 			for (int i = 0; i < servcount; i++)
 				server_error[i] = 1;
 		}
-		//printf("First/now count of servers = %i/%i\n", REAL_COUNT_OF_SERVERS, servcount);
 
 		int servers_i = 0;
 		pthread_t thr_id[4];
 		thread_args_t thread_to_server_args[4];
 		for(int i = 0; i < REAL_COUNT_OF_SERVERS; i++) {
 			if (server_error[i]){
-				//printf("Creating connection to calculate [%i]\n", i);
-				thread_to_server_args[i].a = 1.0/(REAL_COUNT_OF_SERVERS)*i;
-				thread_to_server_args[i].b = 1.0/(REAL_COUNT_OF_SERVERS)*(i+1);
+				thread_to_server_args[i].a = A + (B-A)/(REAL_COUNT_OF_SERVERS)*i;
+				thread_to_server_args[i].b = A + (B-A)/(REAL_COUNT_OF_SERVERS)*(i+1);
 				thread_to_server_args[i].nthrs = COUNT_OF_THREADS;
 				thread_to_server_args[i].result = &results[i];
 				thread_to_server_args[i].server_addr = &server_addr[servers_i];
@@ -207,10 +193,8 @@ int main(int argc, char* argv[]){
 				pthread_join(thr_id[i], NULL);
 
 		COUNT_OF_SERVERS = 0;
-		//for (int i = 0; i < servcount; i++)
-			//printf("server[%i]: error = %i\n", i, server_error[i]);
+
 		for (int i = 0; i < servcount; i++){
-			//printf("server_error[%i] = %i\n", i, server_error[i]);
 			if (server_error[i]){
 				printf("Server %i crashed..\n", i);
 				done = 0;
@@ -219,9 +203,7 @@ int main(int argc, char* argv[]){
 			else
 				printf("Server %i: success. Result: %lg\n", i, results[i]);
 		}
-		//if (servcount == 0)
-		//	done = 1;
-		//printf("done: %i\n", done);
+
 		free(server_addr);
 	}while(!done);
 

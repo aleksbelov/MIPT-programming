@@ -1,14 +1,12 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/select.h>
-#include <sys/un.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <string.h>
-#include <strings.h>
 #include <math.h>
 #include <fcntl.h>
 #include <pthread.h>
@@ -16,7 +14,7 @@
 #include "sockets.h"
 
 double f(double x){
-	return x*sin(x);
+	return sin(x)*cos(2*x)*sin(3*x);
 }
 
 typedef struct{
@@ -111,7 +109,6 @@ int main(){
 
 		//Accept and incoming connection
 
-		printf("");
 		puts("Waiting for incoming connections...");
 
 		fcntl(tcpsock, F_SETFL, O_NONBLOCK);
