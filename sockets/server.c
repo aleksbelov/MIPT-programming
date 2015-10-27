@@ -44,14 +44,15 @@ void* Simpson_integral2(void* args){
 	return NULL;
 }
 
+char ADDR[64];
 
+int main(int argc, char* argv[]){
 
-int main(){
 
 	puts("\n###\tServer started");
 
 	//Create socket
-    int brcstsock = socket(AF_INET , SOCK_DGRAM , IPPROTO_UDP);
+    int brcstsock = socket(PF_INET , SOCK_DGRAM, 0);
     if (brcstsock == -1)
     {
     	puts("Could not create socket..");
@@ -62,8 +63,16 @@ int main(){
     //Prepare the sockaddr_in structure
     struct sockaddr_in server , client;
     server.sin_family = AF_INET;
-    server.sin_addr.s_addr = htonl(INADDR_ANY);
     server.sin_port = htons(1030);
+    if (argc == 2){
+    	inet_aton(argv[1], &server.sin_addr.s_addr);
+    }
+    else
+    	server.sin_addr.s_addr = htonl(INADDR_ANY);
+    printf("Bind on address %s\n", inet_ntoa(server.sin_addr));
+
+    int x = 1;
+    setsockopt(brcstsock, SOL_SOCKET, SO_REUSEADDR, &x, sizeof(x));
 
     //Bind
     if( bind(brcstsock,(struct sockaddr *)&server , sizeof(server)) < 0)
@@ -72,20 +81,25 @@ int main(){
         return 1;
     }
 
-    char recvmsg[1024] = {0};
+    char recvmsg[1024] = "";
     unsigned int fromLength = sizeof(client);
 
     while (1){
 		printf("\n");
 		puts("Waiting for broadcast messages...");
-		if (recvfrom(brcstsock, recvmsg, sizeof(recvmsg), 0, (struct sockaddr *)&client, &fromLength) < 0)
-			perror("recvfrom");
+		fd_set readset;
+		FD_ZERO(&readset);
+		FD_SET(brcstsock, &readset);
+		if (select(brcstsock+1, &readset, NULL, &readset, NULL))
+			if (recvfrom(brcstsock, recvmsg, sizeof(recvmsg), 0, (struct sockaddr *)&client, &fromLength) < 0)
+				perror("recvfrom");
 
-		//printf("Recieved message from client:\n\taddr: %s\n\tport: %u\n",inet_ntoa(client.sin_addr), ntohs(client.sin_port));
+		printf("Recieved message from client:\n\taddr: %s\n\tport: %u\n",inet_ntoa(client.sin_addr), ntohs(client.sin_port));
 		//printf("Message: %s\n", message_from_client);
 		puts("Broadcast received");
 
-		sendto(brcstsock, recvmsg, strlen(recvmsg), 0, (struct sockaddr*) &client, sizeof(client));
+		if (sendto(brcstsock, recvmsg, strlen(recvmsg), 0, (struct sockaddr*) &client, sizeof(client)) < 0)
+			perror("sendto");
 
 		//Tcp connection
 		int tcpsock = socket(AF_INET , SOCK_STREAM , 0);
@@ -93,6 +107,7 @@ int main(){
 		{
 			puts("Could not create tcp socket..");
 			puts("Terminating..");
+			close(brcstsock);
 			return 1;
 		}
 		int x = 1;
@@ -102,17 +117,17 @@ int main(){
 		if( bind(tcpsock,(struct sockaddr *)&server , sizeof(server)) < 0)
 		{
 			perror("Tcp socket bind failed. Error");
+			close(tcpsock);
+			close(brcstsock);
 			return 1;
 		}
-
-		listen(tcpsock , 1);
 
 		//Accept and incoming connection
 
 		puts("Waiting for incoming connections...");
 
 		fcntl(tcpsock, F_SETFL, O_NONBLOCK);
-		fd_set readset;
+		//fd_set readset;
         FD_ZERO(&readset);
         FD_SET(tcpsock, &readset);
 
@@ -167,5 +182,8 @@ int main(){
         }
         close(tcpsock);
     }
+
+
+    close(brcstsock);
     return 0;
 }

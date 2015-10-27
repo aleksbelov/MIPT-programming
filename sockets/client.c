@@ -1,4 +1,4 @@
-
+с
 #include <sys/socket.h>
 #include <sys/select.h>
 #include <stdlib.h>
@@ -47,8 +47,10 @@ void* connect_with_one_server(void* args){
 	setsockopt(tcpsock, IPPROTO_TCP, TCP_KEEPINTVL, &optval, sizeof(optval));
 
 	puts("Connecting with server..");
-	if (connect(tcpsock, (struct sockaddr *)my_args.server_addr, sizeof(*(my_args.server_addr))) < 0)
+	if (connect(tcpsock, (struct sockaddr *)my_args.server_addr, sizeof(*(my_args.server_addr))) < 0){
 		perror("Connection failed! Error");
+		exit(1);
+		}
 	else
 		puts("Connection was established");
 
@@ -83,28 +85,31 @@ void* connect_with_one_server(void* args){
 
 int broadcast_search_for_servers(struct sockaddr_in *server_addr){
 	//Create broadcast socket
-	int brcstsock = socket(AF_INET , SOCK_DGRAM , IPPROTO_UDP);
+	int brcstsock = socket(PF_INET , SOCK_DGRAM, 0);
 	if (brcstsock == -1)
 	{
 		puts("Could not create broadcast socket..");
+		close(brcstsock);
 		return 0;
 	}
+
+	struct sockaddr_in brcst_addr;
+	brcst_addr.sin_family = AF_INET;
+	brcst_addr.sin_port = htons(1030);
+	brcst_addr.sin_addr.s_addr = htonl(INADDR_BROADCAST);
 
 	// Set up a broadcast
 	int x = 1;
 	setsockopt(brcstsock, SOL_SOCKET, SO_BROADCAST, &x, sizeof(x));
 
-	struct sockaddr_in brcst_addr;
-	brcst_addr.sin_family = AF_INET;
-	brcst_addr.sin_port = htons(1030);
-	brcst_addr.sin_addr.s_addr = INADDR_BROADCAST;
-
-
 
 	char msgb[] = "Hello, server!";
 
-	if (sendto(brcstsock, msgb, strlen(msgb), 0, (struct sockaddr*) &brcst_addr, sizeof(brcst_addr)) < 0){
+	printf("Sending message to servers:\n\taddr: %s\n\tport: %u\n",inet_ntoa(brcst_addr.sin_addr), ntohs(brcst_addr.sin_port));
+
+	if (sendto(brcstsock, msgb, strlen(msgb), 0, (const struct sockaddr*) &brcst_addr, sizeof(brcst_addr)) < 0){
 		perror("Sending broadcast. Error");
+		close(brcstsock);
 		return 0;
 	}
 	fcntl(brcstsock, F_SETFL, O_NONBLOCK);
@@ -159,6 +164,7 @@ int main(int argc, char* argv[]){
 		struct sockaddr_in *server_addr = calloc(COUNT_OF_SERVERS, sizeof(struct sockaddr_in));
 
 		int servcount = broadcast_search_for_servers(server_addr);
+
 		printf("  %i server(s) found during <= 2s\n", servcount);
 		if (!REAL_COUNT_OF_SERVERS){
 			REAL_COUNT_OF_SERVERS = servcount;
@@ -166,6 +172,10 @@ int main(int argc, char* argv[]){
 			server_error = calloc(servcount, sizeof(int));
 			for (int i = 0; i < servcount; i++)
 				server_error[i] = 1;
+		}
+		if (servcount == 0){
+			done = 0;
+			break;
 		}
 
 		int servers_i = 0;
@@ -210,7 +220,7 @@ int main(int argc, char* argv[]){
 	for (int i = 1; i < REAL_COUNT_OF_SERVERS; i++)
 		results[0] += results[i];
 
-	if (REAL_COUNT_OF_SERVERS > 0)
+	if (REAL_COUNT_OF_SERVERS > 0 && done == 1)
 		printf("Results received successfully:\n\tIntegral = %lg\n", results[0]);
 	else
 		printf("Errors occurred. No results..\n");
