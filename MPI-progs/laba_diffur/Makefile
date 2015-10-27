@@ -1,0 +1,2 @@
+target:
+	mpic++ laba.cpp
